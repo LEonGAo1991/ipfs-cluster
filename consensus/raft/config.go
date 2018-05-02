@@ -51,10 +51,9 @@ type Config struct {
 	CommitRetries int
 	// How long to wait between retries
 	CommitRetryDelay time.Duration
-	// InitPeerset provides the list of initial cluster peers for new
-	// peers (with no prior state). It is when Raft was already initialized
-	// or when when starting in staging mode, before adding the peer
-	// to a running cluster.
+	// InitPeerset provides the list of initial cluster peers for new Raft
+	// peers (with no prior state). It is ignored when Raft was already
+	// initialized or when starting in staging mode.
 	InitPeerset []peer.ID
 }
 
@@ -114,10 +113,9 @@ type jsonConfig struct {
 	// step down as leader.
 	LeaderLeaseTimeout string `json:"leader_lease_timeout,omitempty"`
 
-	// InitPeerset provides the list of initial cluster peers for new
-	// peers (with no prior state). It is when Raft was already initialized
-	// or when when starting in staging mode, before adding the peer
-	// to a running cluster.
+	// InitPeerset provides the list of initial cluster peers for new Raft
+	// peers (with no prior state). It is ignored when Raft was already
+	// initialized or when starting in staging mode.
 	InitPeerset []string `json:"init_peerset"`
 
 	// The unique ID for this server across all time. When running with

@@ -18,7 +18,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 )
 
-// ReadyTimeout specifies the  before giving up
+// ReadyTimeout specifies the time before giving up
 // during startup (waiting for consensus to be ready)
 // It may need adjustment according to timeouts in the
 // consensus layer.
@@ -414,8 +414,8 @@ This might be due to one or several causes:
 		return
 	case <-c.consensus.Ready():
 		// Consensus ready means the state is up to date so we can sync
-		// it to the tracker.We ignore errors (normal when state doesn't
-		// exist in new peers).
+		// it to the tracker. We ignore errors (normal when state
+		// doesn't exist in new peers).
 		c.StateSync()
 	case <-c.ctx.Done():
 		return
