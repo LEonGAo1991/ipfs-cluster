@@ -162,7 +162,6 @@ func (pm *Manager) ImportPeersFromPeerstore(connect bool) error {
 // LoadPeerstore parses the peerstore file and returns the list
 // of addresses read from it.
 func (pm *Manager) LoadPeerstore() (addrs []ma.Multiaddr) {
-	fmt.Println("path: ", pm.peerstorePath)
 	if pm.peerstorePath == "" {
 		return
 	}
