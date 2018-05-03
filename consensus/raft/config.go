@@ -25,6 +25,7 @@ var (
 	DefaultCommitRetries        = 1
 	DefaultNetworkTimeout       = 10 * time.Second
 	DefaultCommitRetryDelay     = 200 * time.Millisecond
+	DefaultBackupsRotate        = 6
 )
 
 // Config allows to configure the Raft Consensus component for ipfs-cluster.
@@ -36,10 +37,13 @@ type Config struct {
 	// will shutdown libp2p host on shutdown. Useful for testing
 	hostShutdown bool
 
-	// A Hashicorp Raft's configuration object.
-	RaftConfig *hraft.Config
 	// A folder to store Raft's data.
 	DataFolder string
+
+	// InitPeerset provides the list of initial cluster peers for new Raft
+	// peers (with no prior state). It is ignored when Raft was already
+	// initialized or when starting in staging mode.
+	InitPeerset []peer.ID
 	// LeaderTimeout specifies how long to wait for a leader before
 	// failing an operation.
 	WaitForLeaderTimeout time.Duration
@@ -51,10 +55,12 @@ type Config struct {
 	CommitRetries int
 	// How long to wait between retries
 	CommitRetryDelay time.Duration
-	// InitPeerset provides the list of initial cluster peers for new Raft
-	// peers (with no prior state). It is ignored when Raft was already
-	// initialized or when starting in staging mode.
-	InitPeerset []peer.ID
+	// BackupsRotate specifies the maximum number of Raft's DataFolder
+	// copies that we keep as backups (renaming) after cleanup.
+	BackupsRotate int
+
+	// A Hashicorp Raft's configuration object.
+	RaftConfig *hraft.Config
 }
 
 // ConfigJSON represents a human-friendly Config
@@ -68,6 +74,11 @@ type jsonConfig struct {
 	// the Raft.
 	DataFolder string `json:"data_folder,omitempty"`
 
+	// InitPeerset provides the list of initial cluster peers for new Raft
+	// peers (with no prior state). It is ignored when Raft was already
+	// initialized or when starting in staging mode.
+	InitPeerset []string `json:"init_peerset"`
+
 	// How long to wait for a leader before failing
 	WaitForLeaderTimeout string `json:"wait_for_leader_timeout"`
 
@@ -79,6 +90,10 @@ type jsonConfig struct {
 
 	// How long to wait between commit retries
 	CommitRetryDelay string `json:"commit_retry_delay"`
+
+	// BackupsRotate specifies the maximum number of Raft's DataFolder
+	// copies that we keep as backups (renaming) after cleanup.
+	BackupsRotate int `json:"backups_rotate"`
 
 	// HeartbeatTimeout specifies the time in follower state without
 	// a leader before we attempt an election.
@@ -113,11 +128,6 @@ type jsonConfig struct {
 	// step down as leader.
 	LeaderLeaseTimeout string `json:"leader_lease_timeout,omitempty"`
 
-	// InitPeerset provides the list of initial cluster peers for new Raft
-	// peers (with no prior state). It is ignored when Raft was already
-	// initialized or when starting in staging mode.
-	InitPeerset []string `json:"init_peerset"`
-
 	// The unique ID for this server across all time. When running with
 	// ProtocolVersion < 3, you must set this to be the same as the network
 	// address of your transport.
@@ -149,6 +159,10 @@ func (cfg *Config) Validate() error {
 
 	if cfg.CommitRetryDelay <= 0 {
 		return errors.New("commit_retry_delay is invalid")
+	}
+
+	if cfg.BackupsRotate <= 0 {
+		return errors.New("backups_rotate should be larger than 0")
 	}
 
 	return hraft.ValidateConfig(cfg.RaftConfig)
@@ -194,6 +208,7 @@ func (cfg *Config) LoadJSON(raw []byte) error {
 	config.SetIfNotDefault(networkTimeout, &cfg.NetworkTimeout)
 	cfg.CommitRetries = jcfg.CommitRetries
 	config.SetIfNotDefault(commitRetryDelay, &cfg.CommitRetryDelay)
+	config.SetIfNotDefault(jcfg.BackupsRotate, &cfg.BackupsRotate)
 
 	// Raft values
 	config.SetIfNotDefault(heartbeatTimeout, &cfg.RaftConfig.HeartbeatTimeout)
@@ -211,21 +226,23 @@ func (cfg *Config) LoadJSON(raw []byte) error {
 
 // ToJSON returns the pretty JSON representation of a Config.
 func (cfg *Config) ToJSON() ([]byte, error) {
-	jcfg := &jsonConfig{}
-	jcfg.DataFolder = cfg.DataFolder
-	jcfg.WaitForLeaderTimeout = cfg.WaitForLeaderTimeout.String()
-	jcfg.NetworkTimeout = cfg.NetworkTimeout.String()
-	jcfg.CommitRetries = cfg.CommitRetries
-	jcfg.CommitRetryDelay = cfg.CommitRetryDelay.String()
-	jcfg.HeartbeatTimeout = cfg.RaftConfig.HeartbeatTimeout.String()
-	jcfg.ElectionTimeout = cfg.RaftConfig.ElectionTimeout.String()
-	jcfg.CommitTimeout = cfg.RaftConfig.CommitTimeout.String()
-	jcfg.MaxAppendEntries = cfg.RaftConfig.MaxAppendEntries
-	jcfg.TrailingLogs = cfg.RaftConfig.TrailingLogs
-	jcfg.SnapshotInterval = cfg.RaftConfig.SnapshotInterval.String()
-	jcfg.SnapshotThreshold = cfg.RaftConfig.SnapshotThreshold
-	jcfg.LeaderLeaseTimeout = cfg.RaftConfig.LeaderLeaseTimeout.String()
-	jcfg.InitPeerset = api.PeersToStrings(cfg.InitPeerset)
+	jcfg := &jsonConfig{
+		DataFolder:           cfg.DataFolder,
+		InitPeerset:          api.PeersToStrings(cfg.InitPeerset),
+		WaitForLeaderTimeout: cfg.WaitForLeaderTimeout.String(),
+		NetworkTimeout:       cfg.NetworkTimeout.String(),
+		CommitRetries:        cfg.CommitRetries,
+		CommitRetryDelay:     cfg.CommitRetryDelay.String(),
+		BackupsRotate:        cfg.BackupsRotate,
+		HeartbeatTimeout:     cfg.RaftConfig.HeartbeatTimeout.String(),
+		ElectionTimeout:      cfg.RaftConfig.ElectionTimeout.String(),
+		CommitTimeout:        cfg.RaftConfig.CommitTimeout.String(),
+		MaxAppendEntries:     cfg.RaftConfig.MaxAppendEntries,
+		TrailingLogs:         cfg.RaftConfig.TrailingLogs,
+		SnapshotInterval:     cfg.RaftConfig.SnapshotInterval.String(),
+		SnapshotThreshold:    cfg.RaftConfig.SnapshotThreshold,
+		LeaderLeaseTimeout:   cfg.RaftConfig.LeaderLeaseTimeout.String(),
+	}
 
 	return config.DefaultJSONMarshal(jcfg)
 }
@@ -233,11 +250,12 @@ func (cfg *Config) ToJSON() ([]byte, error) {
 // Default initializes this configuration with working defaults.
 func (cfg *Config) Default() error {
 	cfg.DataFolder = "" // empty so it gets omitted
+	cfg.InitPeerset = []peer.ID{}
 	cfg.WaitForLeaderTimeout = DefaultWaitForLeaderTimeout
 	cfg.NetworkTimeout = DefaultNetworkTimeout
 	cfg.CommitRetries = DefaultCommitRetries
 	cfg.CommitRetryDelay = DefaultCommitRetryDelay
-	cfg.InitPeerset = []peer.ID{}
+	cfg.BackupsRotate = DefaultBackupsRotate
 	cfg.RaftConfig = hraft.DefaultConfig()
 
 	// These options are imposed over any Default Raft Config.

@@ -166,5 +166,5 @@ func exportState(state *mapstate.MapState, w io.Writer) error {
 
 // CleanupState cleans the state
 func cleanupState(cCfg *raft.Config) error {
-	return raft.CleanupRaft(cCfg.GetDataFolder())
+	return raft.CleanupRaft(cCfg.GetDataFolder(), cCfg.BackupsRotate)
 }

@@ -57,6 +57,5 @@ func saveConfig(cfg *config.Manager, force bool) {
 	err := os.MkdirAll(filepath.Dir(configPath), 0700)
 	err = cfg.SaveJSON(configPath)
 	checkErr("saving new configuration", err)
-	out("%s configuration written to %s\n",
-		programName, configPath)
+	out("%s configuration written to %s\n", programName, configPath)
 }

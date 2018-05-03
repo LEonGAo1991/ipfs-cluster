@@ -31,6 +31,7 @@ var testingRaftCfg = []byte(`{
     "wait_for_leader_timeout": "10s",
     "commit_retries": 2,
     "commit_retry_delay": "50ms",
+    "backups_rotate": 2,
     "network_timeout": "5s",
     "heartbeat_timeout": "100ms",
     "election_timeout": "100ms",

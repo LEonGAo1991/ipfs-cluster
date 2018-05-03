@@ -30,7 +30,7 @@ var errWaitingForSelf = errors.New("waiting for ourselves to depart")
 // folder.
 // TODO: Maybe include this in Config. Not sure how useful it is to touch
 // this anyways.
-var RaftMaxSnapshots = 8
+var RaftMaxSnapshots = 5
 
 // RaftLogCacheSize is the maximum number of logs to cache in-memory.
 // This is used to reduce disk I/O for the recently committed entries.
@@ -55,7 +55,6 @@ type raftWrapper struct {
 	raft          *hraft.Raft
 	config        *Config
 	host          host.Host
-	dataFolder    string
 	serverConfig  hraft.Configuration
 	transport     *hraft.NetworkTransport
 	snapshotStore hraft.SnapshotStore
@@ -87,7 +86,6 @@ func newRaftWrapper(
 	if err != nil {
 		return nil, err
 	}
-	raftW.dataFolder = df
 
 	raftW.makeServerConfig()
 
@@ -118,8 +116,8 @@ func newRaftWrapper(
 	return raftW, nil
 }
 
-// returns the folder path after creating it.
-// if folder is empty, it uses baseDir+Default.
+// makeDataFolder creates the folder that is meant
+// to store Raft data.
 func makeDataFolder(folder string) error {
 	err := os.MkdirAll(folder, 0700)
 	if err != nil {
@@ -595,7 +593,7 @@ func SnapshotSave(cfg *Config, newState state.State, pids []peer.ID) error {
 		raftIndex = meta.Index
 		raftTerm = meta.Term
 		srvCfg = meta.Configuration
-		CleanupRaft(dataFolder)
+		CleanupRaft(dataFolder, cfg.BackupsRotate)
 	} else {
 		// Begin the log after the index of a fresh start so that
 		// the snapshot's state propagate's during bootstrap
@@ -628,10 +626,19 @@ func SnapshotSave(cfg *Config, newState state.State, pids []peer.ID) error {
 }
 
 // CleanupRaft moves the current data folder to a backup location
-func CleanupRaft(dataFolder string) error {
+func CleanupRaft(dataFolder string, keep int) error {
+	meta, _, err := latestSnapshot(dataFolder)
+	if meta == nil && err == nil {
+		// no snapshots at all. Avoid creating backups
+		// from empty state folders.
+		logger.Infof("cleaning empty Raft data folder (%s)", dataFolder)
+		os.RemoveAll(dataFolder)
+		return nil
+	}
+
 	logger.Infof("cleaning and backing up Raft data folder (%s)", dataFolder)
-	dbh := newDataBackupHelper(dataFolder)
-	err := dbh.makeBackup()
+	dbh := newDataBackupHelper(dataFolder, keep)
+	err = dbh.makeBackup()
 	if err != nil {
 		logger.Warning(err)
 		logger.Warning("the state could not be cleaned properly")
@@ -642,7 +649,7 @@ func CleanupRaft(dataFolder string) error {
 
 // only call when Raft is shutdown
 func (rw *raftWrapper) Clean() error {
-	return CleanupRaft(rw.dataFolder)
+	return CleanupRaft(rw.config.GetDataFolder(), rw.config.BackupsRotate)
 }
 
 func find(s []string, elem string) bool {

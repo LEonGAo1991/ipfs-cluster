@@ -130,11 +130,11 @@ func (pm *Manager) PeersAddresses(peers []peer.ID) []ma.Multiaddr {
 		return nil
 	}
 
-	addrs := []ma.Multiaddr{}
 	if peers == nil {
-		return addrs
+		return nil
 	}
 
+	var addrs []ma.Multiaddr
 	for _, p := range peers {
 		if p == pm.host.ID() {
 			continue

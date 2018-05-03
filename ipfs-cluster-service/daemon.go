@@ -36,7 +36,6 @@ func parseBootstraps(flagVal []string) (bootstraps []ma.Multiaddr) {
 }
 
 // Runs the cluster peer
-
 func daemon(c *cli.Context) error {
 	logger.Info("Initializing. For verbose output run with \"-l debug\". Please wait...")
 
@@ -90,7 +89,6 @@ func daemon(c *cli.Context) error {
 	go bootstrap(cluster, bootstraps)
 
 	return handleSignals(cluster)
-
 }
 
 func createCluster(

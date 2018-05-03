@@ -6,24 +6,22 @@ import (
 	"path/filepath"
 )
 
-// RaftDataBackupKeep indicates the number of data folders we keep around
-// after consensus.Clean() has been called.
-var RaftDataBackupKeep = 5
-
 // dataBackupHelper helps making and rotating backups from a folder.
 // it will name them <folderName>.old.0, .old.1... and so on.
 // when a new backup is made, the old.0 is renamed to old.1 and so on.
-// when the RaftDataBackupKeep number is reached, the last is always
+// when the "keep" number is reached, the last is always
 // discarded.
 type dataBackupHelper struct {
 	baseDir    string
 	folderName string
+	keep       int
 }
 
-func newDataBackupHelper(dataFolder string) *dataBackupHelper {
+func newDataBackupHelper(dataFolder string, keep int) *dataBackupHelper {
 	return &dataBackupHelper{
 		baseDir:    filepath.Dir(dataFolder),
 		folderName: filepath.Base(dataFolder),
+		keep:       keep,
 	}
 }
 
@@ -33,7 +31,7 @@ func (dbh *dataBackupHelper) makeName(i int) string {
 
 func (dbh *dataBackupHelper) listBackups() []string {
 	backups := []string{}
-	for i := 0; i < RaftDataBackupKeep; i++ {
+	for i := 0; i < dbh.keep; i++ {
 		name := dbh.makeName(i)
 		if _, err := os.Stat(name); os.IsNotExist(err) {
 			return backups
@@ -60,7 +58,7 @@ func (dbh *dataBackupHelper) makeBackup() error {
 	// list all backups in it
 	backups := dbh.listBackups()
 	// remove last / oldest. Ex. if max is five, remove name.old.4
-	if len(backups) >= RaftDataBackupKeep {
+	if len(backups) >= dbh.keep {
 		os.RemoveAll(backups[len(backups)-1])
 	} else { // append new backup folder. Ex, if 2 exist: add name.old.2
 		backups = append(backups, dbh.makeName(len(backups)))
